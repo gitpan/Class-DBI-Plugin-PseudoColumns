@@ -5,4 +5,8 @@ MANIFEST			This list of files
 README
 t/00_compile.t
 t/01_test_pod.t
+t/02_pseudo_columns.t
+t/03_normal.t
+t/04_create.t
+t/05_serializer.t
 META.yml                                 Module meta-data (added by MakeMaker)

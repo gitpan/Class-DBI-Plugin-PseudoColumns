@@ -1,4 +1,4 @@
-Class::DBI::Plugin::PseudoColumns version 0.01
+Class::DBI::Plugin::PseudoColumns version 0.02
 ==============================================
 
 NAME
@@ -23,16 +23,25 @@ SYNOPSIS
          $cd->update;
      }
 
+     my $bought_cd = Music::CD->create({
+         artist  => 'The Rolling Stones',
+         title   => 'A Bigger Bang - Special Edition',
+         year    => 2005,
+         reldate => '2005-11-22',
+         asin    => 'B000BP86LE',
+         tag     => ['rock', 'blues', 'rock'],
+     });
+
 DESCRIPTION
     This module provides an easy way to use pseudo column in your
     "Class::DBI" based table classes. The ``pseudo column'' means a kind of
-    column that is including an optical hashref string (via "Data::Dumper").
-    You can get and set with using the pseudo column accessors (same as
-    always). But, you can't use the columns' name into your SQL, SQL
-    interfaced methods, "ORDER BY" clause and "GROUP BY" clause, etc. This
-    module is useful when you'd like to add an unimportant column without
-    issuing "ALTER TABLE", and when you'd like to have related multiple data
-    without normalizing table.
+    column that is including an optical hashref string (via "Data::Dumper",
+    by default). You can get and set with using the pseudo column accessors
+    (same as always). But, you can't use the columns' name into your SQL,
+    SQL interfaced methods, "ORDER BY" clause and "GROUP BY" clause, etc.
+    This module is useful when you'd like to add an unimportant column
+    without issuing "ALTER TABLE", and when you'd like to have related
+    multiple data without normalizing table.
 
 HOW TO USE
   Create a column
@@ -66,19 +75,63 @@ HOW TO USE
      Music::CD->pseudo_columns(properties => qw/asin tag/);
 
 METHOD
-    * pseudo_columns(parent_colname => ('pseudo_column1'[, 'pseudo_column2' ...]));
+    This module provides following class methods.
+
+    * create(\%data);
+        "create" method works almost same as "Class::DBI::create()" if
+        there's some pseudo column in %data.
+
+    * pseudo_columns([parent_colname => ('pseudo_column1'[, 'pseudo_column2'
+    ...])]);
         You can set a pseudo columns' name with parent column's name.
         ``pseudo_column1'' ... will provide to you each pseudo column's
         accessor.
+
+        if you want to take a list of pseudo columns, you can pass one
+        argument to this method when you want to specify grouped parent
+        column name.
+
+         my @p_columns = Music::CD->pseudo_columns('properties');
+
+        And if you want to take all columns list of pseudo columns, you
+        don't need to pass any argument to this method.
+
+         my @all_p_columns = Music::CD->pseudo_columns();
+
+    * serializer(parent_colname => \&serializer_sub);
+        You can set a specific serializing function for your pseudo columns.
+
+         use Storable ();
+         __PACKAGE__->serializer(properties => \&Storable::nfreeze);
+
+        The default serializer is "Data::Dumper::Dumper" (when you don't
+        specify).
+
+    * deserializer(parent_coluname => \&deserializer_sub);
+        You can set a specific deserializing function for your pseudo
+        columns.
+
+         use Storable ();
+         __PACKAGE__->deserializer(properties => \&Storable::thaw);
+
+        The default deserializer calls "eval()" (when you don't specify) for
+        the dumped optical hashref string.
+
+        NOTE: The subref for serializer/deserializer must return a really
+        ``storable'' string for your database. example of above works under
+        a MySQL environment, but you have to change to use some another
+        ``storable'' filter (like "MIME::Base64") under SQLite environment
+        (see t/05_serializer.t)
 
 AUTHOR
     Koichi Taniguchi <taniguchi@livedoor.jp>
 
 COPYRIGHT
-    Copyright (c) 2005 Koichi Taniguchi. Japan. All rights reserved.
+    Copyright (c) 2006 Koichi Taniguchi. Japan. All rights reserved.
 
     This library is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself.
 
 SEE ALSO
     Class::DBI, Data::Dumper
+

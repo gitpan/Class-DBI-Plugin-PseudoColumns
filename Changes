@@ -1,4 +1,14 @@
 Revision history for Perl extension Class::DBI::Plugin::PseudoColumns
 
-0.01  Wed Nov 16 07:00:15 2005
+0.02  Tue Jan 10 16:54:41 JST 2006
+        - added create() method.
+        - added serializer() method.
+        - added deserializer() method.
+        - pseudo_columns() was changed to return grouped column names
+          like Class::DBI::columns().
+        - many hints are provided by
+          Masahiro Nagano <kazeburo at cpan.org> and
+          Takuji ASAKURA <asakura at cpan.org>, thanks.
+
+0.01  Wed Nov 16 07:00:15 JST 2005
         - original version
