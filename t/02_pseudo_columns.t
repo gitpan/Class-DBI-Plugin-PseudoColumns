@@ -16,11 +16,11 @@ my @DSN = ("dbi:SQLite:dbname=$DB", '', '', { AutoCommit => 1 });
 
 END { unlink $DB if -e $DB }
 
+use Class::DBI::Plugin::PseudoColumns;
 __PACKAGE__->set_db(Main => @DSN);
 __PACKAGE__->table('cd');
 __PACKAGE__->columns(All => qw/cdid artist title year reldate properties/);
 
-use Class::DBI::Plugin::PseudoColumns;
 __PACKAGE__->pseudo_columns(properties => qw/asin tag/);
 
 sub CONSTRUCT {

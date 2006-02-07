@@ -16,6 +16,8 @@ package Music::CD;
 use base 'Class::DBI';
 use File::Temp qw/tempfile/;
 
+use Class::DBI::Plugin::PseudoColumns;
+
 my (undef, $DB) = tempfile();
 my @DSN = ("dbi:SQLite:dbname=$DB", '', '', { AutoCommit => 1 });
 
@@ -24,8 +26,6 @@ END { unlink $DB if -e $DB }
 __PACKAGE__->set_db(Main => @DSN);
 __PACKAGE__->table('cd');
 __PACKAGE__->columns(All => qw/cdid artist title year reldate properties/);
-
-use Class::DBI::Plugin::PseudoColumns;
 __PACKAGE__->pseudo_columns(properties => qw/asin tag/);
 __PACKAGE__->serializer(properties => sub {
     MIME::Base64::encode_base64(Storable::nfreeze(shift))

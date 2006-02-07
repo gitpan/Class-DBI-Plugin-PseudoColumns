@@ -4,23 +4,31 @@ use strict;
 use warnings;
 use Carp;
 use Data::Dumper ();
-use vars qw($VERSION $COLUMN $SERIALIZER);
-$VERSION = 0.02;
+use vars qw($VERSION);
+$VERSION = 0.03;
 
 sub import {
     my $class = shift;
-    my $pkg   = caller(0);
+    my $pkg   = caller;
+
+    return unless $pkg->isa('Class::DBI');
+    if ($pkg->isa('Class::DBI')) {
+        $pkg->mk_classdata('_p_column_groups');
+        $pkg->mk_classdata('_serializer');
+    }
+
     no strict 'refs';
 
     *{"$pkg\::pseudo_columns"} = sub {
         my $class = shift;
-        my $table = $class->table;
         croak "You must set table before call pseudo_columns()"
-            unless defined $table;
+            unless defined $class->table;
         my $parent_column = shift;
+        my $p_col_groups = $class->_p_column_groups;
         if (defined $_[0]) {
             my @colnames = @_;
-            $COLUMN->{$table}->{$parent_column} = \@colnames;
+            $p_col_groups->{$class}->{$parent_column} = \@colnames;
+            $class->_p_column_groups($p_col_groups);
             for my $p_column (@colnames) {
                 *{"$class\::$p_column"} = sub {
                     my $self = shift;
@@ -36,38 +44,37 @@ sub import {
             }
         }
         elsif (defined $parent_column) {
-            return unless ref($COLUMN) eq 'HASH' &&
-                ref($COLUMN->{$table}) eq 'HASH' &&
-                    ref($COLUMN->{$table}->{$parent_column}) eq 'ARRAY';
-            return @{$COLUMN->{$table}->{$parent_column}};
+            return unless ref($p_col_groups) eq 'HASH' &&
+                ref($p_col_groups->{$class}) eq 'HASH' &&
+                    ref($p_col_groups->{$class}->{$parent_column}) eq 'ARRAY';
+            return @{$p_col_groups->{$class}->{$parent_column}};
         }
         else {
-            return unless ref($COLUMN) eq 'HASH' &&
-                ref($COLUMN->{$table}) eq 'HASH';
+            return unless ref($p_col_groups) eq 'HASH' &&
+                ref($p_col_groups->{$class}) eq 'HASH';
             my @pseudo_cols = ();
-            for my $col (keys %{$COLUMN->{$table}}) {
-                next unless ref($COLUMN->{$table}->{$col}) eq 'ARRAY';
-                push @pseudo_cols, @{$COLUMN->{$table}->{$col}};
+            for my $col (keys %{$p_col_groups->{$class}}) {
+                next unless ref($p_col_groups->{$class}->{$col}) eq 'ARRAY';
+                push @pseudo_cols, @{$p_col_groups->{$class}->{$col}};
             }
             return @pseudo_cols;
         }
     };
 
-    my $super = $pkg->can('create');
-    croak "create() method can not be called in $pkg" unless $super;
+    my $super_create = $pkg->can('create');
+    croak "create() method can not be called in $pkg" unless $super_create;
     *{"$pkg\::create"} = sub {
         my($class, $hashref) = @_;
         croak "create needs a hashref" unless ref($hashref) eq 'HASH';
-        my $table = $class->table;
         croak "You must set table before call create()"
-            unless defined $table;
+            unless defined $class->table;
         my %cols_check = map { $_ => 1 } $class->pseudo_columns;
         my %p_values = ();
         for my $col (keys %$hashref) {
             next unless $cols_check{$col};
             $p_values{$col} = delete $hashref->{$col};
         }
-        my $row = $class->$super($hashref); # create()
+        my $row = $class->$super_create($hashref); # create()
         if (%p_values) {
             for my $col (keys %p_values) {
                 $row->$col($p_values{$col});
@@ -77,6 +84,26 @@ sub import {
         return $row;
     };
 
+    my $super_set = $pkg->can('set');
+    croak "set() method can not be called in $pkg" unless $super_set;
+    *{"$pkg\::set"} = sub {
+        my $self = shift;
+        my $column_values = {@_};
+        my $class = ref($self) || $self;
+        my %cols_check = map { $_ => 1 } $class->pseudo_columns;
+        my %p_values = ();
+        for my $col (keys %$column_values) {
+            next unless $cols_check{$col};
+            $p_values{$col} = delete $column_values->{$col};
+        }
+        $self->$super_set(%$column_values) if %$column_values;
+        if (%p_values) {
+            for my $col (keys %p_values) {
+                $self->$col($p_values{$col});
+            }
+        }
+    };
+
     for my $export (qw(__serialize __deserialize serializer deserializer)) {
         *{"$pkg\::$export"} = \&$export;
     }
@@ -84,10 +111,12 @@ sub import {
 
 sub serializer {
     my($class, $parent_column, $subref) = @_;
-    my $table = $class->table;
-    croak "You must set table before call serializer()" unless defined $table;
+    croak "You must set table before call serializer()"
+        unless defined $class->table;
+    my $serializer = $class->_serializer;
     if (ref($subref) eq 'CODE') {
-        $SERIALIZER->{$table}->{serializer} = { $parent_column => $subref };
+        $serializer->{serializer} = { $parent_column => $subref };
+        $class->_serializer($serializer);
     }
     else {
         carp "Usage: __PACKAGE__->serializer(parent_column => \$subref)";
@@ -96,10 +125,12 @@ sub serializer {
 
 sub deserializer {
     my($class, $parent_column, $subref) = @_;
-    my $table = $class->table;
-    croak "You must set table before call deserializer()" unless defined $table;
+    croak "You must set table before call deserializer()"
+        unless defined $class->table;
+    my $serializer = $class->_serializer;
     if (ref($subref) eq 'CODE') {
-        $SERIALIZER->{$table}->{deserializer} = { $parent_column => $subref };
+        $serializer->{deserializer} = { $parent_column => $subref };
+        $class->_serializer($serializer);
     }
     else {
         carp "Usage: __PACKAGE__->deserializer(parent_column => \$subref)";
@@ -109,13 +140,13 @@ sub deserializer {
 sub __serialize {
     my($self, $column, $var) = @_;
     my $class = ref($self) || $self;
-    my $table = $class->table;
     croak "Can't lookup the table name via table() method."
-        unless defined $table;
-    if (ref($SERIALIZER->{$table}->{serializer}) eq 'HASH' &&
-        exists $SERIALIZER->{$table}->{serializer}->{$column} &&
-            ref($SERIALIZER->{$table}->{serializer}->{$column}) eq 'CODE') {
-        return $SERIALIZER->{$table}->{serializer}->{$column}->($var);
+        unless defined $class->table;
+    my $serializer = $class->_serializer;
+    if (ref($serializer->{serializer}) eq 'HASH' &&
+        exists $serializer->{serializer}->{$column} &&
+            ref($serializer->{serializer}->{$column}) eq 'CODE') {
+        return $serializer->{serializer}->{$column}->($var);
     }
     else {
         local $Data::Dumper::Terse  = 1;
@@ -127,16 +158,16 @@ sub __serialize {
 sub __deserialize {
     my($self, $column) = @_;
     my $class = ref($self) || $self;
-    my $table = $class->table;
     croak "Can't lookup the table name via table() method."
-        unless defined $table;
+        unless defined $class->table;
     my $prop;
     my $dumped = $self->$column;
     if (defined $dumped) {
-        if (ref($SERIALIZER->{$table}->{deserializer}) eq 'HASH' &&
-            exists $SERIALIZER->{$table}->{deserializer}->{$column} &&
-                ref($SERIALIZER->{$table}{deserializer}->{$column}) eq 'CODE') {
-            $prop = $SERIALIZER->{$table}->{deserializer}->{$column}->($dumped);
+        my $serializer = $class->_serializer;
+        if (ref($serializer->{deserializer}) eq 'HASH' &&
+            exists $serializer->{deserializer}->{$column} &&
+                ref($serializer->{deserializer}->{$column}) eq 'CODE') {
+            $prop = $serializer->{deserializer}->{$column}->($dumped);
         }
         else {
             $prop = eval qq{ $dumped };
@@ -175,13 +206,18 @@ Class::DBI::Plugin::PseudoColumns - an interface to use some pseudo columns
  }
 
  my $bought_cd = Music::CD->create({
-     artist  => 'The Rolling Stones',
-     title   => 'A Bigger Bang - Special Edition',
+     artist  => 'Rolling Stones',
+     title   => 'A Bigger Bang',
      year    => 2005,
      reldate => '2005-11-22',
      asin    => 'B000BP86LE',
-     tag     => ['rock', 'blues', 'rock'],
+     tag     => ['rock', 'blues', 'favorite'],
  });
+ $bought_cd->set(
+     artist => 'The Rolling Stones',
+     title  => 'A Bigger Bang - Special Edition',
+ );
+ $bought_cd->update;
 
 =head1 DESCRIPTION
 
@@ -236,6 +272,10 @@ This module provides following class methods.
 =item * create(\%data);
 
 C<create> method works almost same as C<Class::DBI::create()> if there's some pseudo column in C<%data>.
+
+=item * set(column => value[, column2 => value2, ...]);
+
+C<set> method works almost same as C<Class::DBI::set()> if there's some pseudo column in argument.
 
 =item * pseudo_columns([parent_colname => ('pseudo_column1'[, 'pseudo_column2' ...])]);
 

@@ -3,7 +3,7 @@ use Test::More;
 
 BEGIN {
     eval "use DBD::SQLite";
-    plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 7);
+    plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 14);
 }
 
 package Music::CD;
@@ -54,10 +54,28 @@ is($row->title, 'bar', "cmp for title()");
 is($row->year, 2006, "cmp for year()");
 is($row->reldate, '2006-01-01', "cmp for reldate()");
 
-$row->asin('ABCDEFG');
-$row->tag([qw/FOO BAR BAZ/]);
+$row->set(asin => 'ABCDEFG');
+$row->set(tag => [qw/FOO BAR BAZ/]);
 $row->update;
 
 is($row->asin, 'ABCDEFG', "cmp for asin - a pseudo column");
-
 is_deeply($row->tag, [qw/FOO BAR BAZ/], "cmp for tag - a complex pseudo column");
+$row->set(
+    artist  => 'FOO',
+    title   => 'BAR',
+    year    => '2005',
+    reldate => '2005-12-31',
+    asin    => 'abcdefg',
+    tag     => [qw/foo bar baz/],
+);
+
+$row->update;
+
+# after update
+is($row->cdid, 1, "cmp for cdid()");
+is($row->artist, 'FOO', "cmp for artist()");
+is($row->title, 'BAR', "cmp for title()");
+is($row->year, 2005, "cmp for year()");
+is($row->reldate, '2005-12-31', "cmp for reldate()");
+is($row->asin, 'abcdefg', "cmp for asin - a pseudo column");
+is_deeply($row->tag, [qw/foo bar baz/], "cmp for tag - a complex pseudo column");
